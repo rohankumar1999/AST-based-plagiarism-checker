@@ -1,0 +1,5 @@
+if true then
+  X := 0 - 3
+else
+  skip
+endif
