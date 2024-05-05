@@ -1,12 +1,3 @@
-{-
-  Name: Naga Rohan Kumar Bayya
-  Class: CS 252
-  Assigment: HW3
-  Date: <Date assignment is due>
-  Description: <Describe the program and what it does>
--}
-
-
 module Ast (
   Expression(..),
   Binop(..),
@@ -19,6 +10,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Text.ParserCombinators.Parsec
 import Control.Monad.Except
+import qualified Data.ByteString.Char8 as BS
 
 -- We represent variables as strings.
 type Variable = String
@@ -175,8 +167,28 @@ ifP = do
   string "else"
   (e3, hash_e3) <- exprP 
   string "endif"
-  return $ (If e1 e2 e3, hash_e1 ++ hash_e2 ++ hash_e3 ++ [hash (4::Int)+ last hash_e1+ last hash_e2+ last hash_e3])
+  return $ (If e1 e2 e3,  hash_e1 ++ hash_e2 ++ [hash (4::Int)] ++ hash_e3 ++ [hash (4::Int)+ last hash_e1+ last hash_e2+ last hash_e3])
 
+funP = do
+  spaces
+  string "def"
+  spaces
+  (fname, hash_fname) <- varP
+  string "("
+  spaces 
+  (args, hash_args) <- optionMaybe f_args
+  spaces ")"
+  string ":"
+  (e1, hash_e1) <- exprP
+
+
+f_args = do
+  (args, hash_args) <-  f_arg
+  rest <- optionMaybe rest_args
+
+rest_args =do
+  char ","
+  f_args
 
 whileP = do
   spaces
@@ -185,7 +197,7 @@ whileP = do
   string "do"
   (e2, hash_e2) <- exprP
   string "endwhile"
-  return $ (While e1 e2, hash_e1 ++ hash_e2 ++ [hash (5::Int) + last hash_e1 + last hash_e2])
+  return $ (While e1 e2, hash_e1 ++ [hash (5::Int)] ++  hash_e2 ++ [hash (5::Int) + last hash_e1 + last hash_e2])
 
 -- An expression in parens, e.g. (9-5)*2
 parenP = do

@@ -1,5 +1,6 @@
-if true then
-  X := 0 - 3
-else
-  skip
-endif
+X := 3;
+F := 1;
+while X > 1 do
+  F := Z + F;
+  X := X - 1
+endwhile
