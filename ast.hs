@@ -2,7 +2,7 @@ module Ast (
   Expression(..),
   Binop(..),
   Value(..),
-  showParsedExp,
+  showAst,
 ) where
   
 
@@ -18,18 +18,17 @@ type Variable = String
 --We also represent error messages as strings.
 type ErrorMsg = String
 
--- The store is an associative map from variables to values.
--- (The store roughly corresponds with the heap in a language like Java).
-type Store = Map Variable Value
 
 data Expression =
     Var Variable                            -- x
   | Val Value                               -- v
+  | Lst Expression
   | Assign Variable Expression              -- x := e
   | Sequence Expression Expression          -- e1; e2
   | Op Binop Expression Expression
   | If Expression Expression Expression     -- if e1 then e2 else e3 endif
   | While Expression Expression             -- while e1 do e2 endwhile
+  | Fun Variable Expression Expression
   deriving (Show)
 type List = [Int]
 
@@ -131,11 +130,13 @@ restP = do
 
 -- All terms can be distinguished by looking at the first character
 termP = valP
+    <|> listP
+    <|> funP
     <|> ifP
     <|> whileP
     <|> parenP
     <|> varP
-    <?> "value, variable, 'if', 'while', or '('"
+    <?> "value, variable, 'def', 'if', 'while', or '('"
 
 
 valP = do
@@ -152,6 +153,28 @@ boolP = do
 numberP = do
   n <- many1 digit
   return $ (IntVal (read n), [read n])
+
+listP = do
+  string "["
+  (elements, hash_elements) <- list_elements
+  string "]"
+  return (Lst elements, hash_elements)
+
+list_elements = do
+  (elem, hash_elem) <-  list_elem
+  rest <- optionMaybe rest_elems
+  return (case rest of
+    Nothing   -> (elem, hash_elem)
+    Just (e', hash_e') -> (Sequence elem e', hash_elem++hash_e'))
+
+list_elem = do
+  (elem, hash_elem) <- valP
+  return (elem, hash_elem)
+
+rest_elems = do
+  char ','
+  spaces
+  list_elements
 
 varP = do
   firstChar <- letter
@@ -175,19 +198,38 @@ funP = do
   spaces
   (fname, hash_fname) <- varP
   string "("
-  spaces 
-  (args, hash_args) <- optionMaybe f_args
-  spaces ")"
+  (args, hash_args) <- f_args
+  string ")"
   string ":"
-  (e1, hash_e1) <- exprP
+  (body, hash_body) <- exprP
+  string "enddef"
+  return( case fname of
+    Var varName -> (Fun varName args body, hash_fname ++ hash_args ++ hash_body ++ [hash (0::Int)] ++ [hash (0::Int) + last hash_fname + last hash_args + last hash_body])
+    _ -> error "expected variable")
+
 
 
 f_args = do
   (args, hash_args) <-  f_arg
   rest <- optionMaybe rest_args
+  return (case rest of
+    Nothing   -> (args, hash_args)
+    Just (e', hash_e') -> (Sequence args e', hash_args++hash_e'))
 
-rest_args =do
-  char ","
+f_arg = do
+  (arg, hash_arg) <- varP
+  default_assgn <- optionMaybe restP
+  return $ case default_assgn of
+    Nothing -> (arg, hash_arg)
+    Just (":=", hash_assign, t', hash_t') -> case arg of
+      Var argument ->    (Assign argument t', hash_arg++[hash_assign]++hash_t'++[(hash_assign::Int)+ last hash_arg + last hash_t'])
+      _ -> error "error"
+    _           -> error "Expected assignment"
+
+
+rest_args = do
+  char ','
+  spaces
   f_args
 
 whileP = do
@@ -220,7 +262,7 @@ parenP = do
 
 
 
-showParsedExp fileName = do
+showAst fileName = do
   p <- parseFromFile fileP fileName
   return (case p of
         Left err -> []

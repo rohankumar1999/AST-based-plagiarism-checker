@@ -1,6 +1,3 @@
-X := 3;
-F := 1;
-while X > 1 do
-  F := Z + F;
-  X := X - 1
-endwhile
+def fname(arg1:=2, arg2:=3, arg3:=4):
+  X := 3
+enddef

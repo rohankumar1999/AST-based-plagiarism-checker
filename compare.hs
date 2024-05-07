@@ -5,9 +5,9 @@ module Compare (
 
 import Data.List (tails, inits)
 
-findOverlappingSubarrays :: Eq a => [a] -> [a] -> [[a]]
+-- findOverlappingSubarrays :: Eq a => [a] -> [a] -> [[a]]
 findOverlappingSubarrays xs ys =
-    filterSubarrays [sub | sub <- subarrays xs, sub `elem` subarrays ys]
+    length $ filterSubarrays [sub | sub <- subarrays xs, sub `elem` subarrays ys]
 
 subarrays :: [a] -> [[a]]
 subarrays = concatMap tails . inits
@@ -22,4 +22,4 @@ isSubarrayOf (x:xs) (y:ys)
 
 -- Function to filter out lists that are subarrays of any other list
 filterSubarrays :: Eq a => [[a]] -> [[a]]
-filterSubarrays l = filter (\x -> not (any (\y -> x /= y && isSubarrayOf x y) l)) l
+filterSubarrays l = filter (\x -> not (any (\y -> x /= y && isSubarrayOf x y) l) && length x >= 10) l
