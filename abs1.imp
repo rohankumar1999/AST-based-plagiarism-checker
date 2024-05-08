@@ -1,3 +1,14 @@
-def fname(arg1:=2, arg2:=3, arg3:=4):
-  X := 3
-enddef
+x := 7 + 3;
+if x then
+  def fname(arg1:=2, arg2:=3, arg3:=4):
+    X := 3
+  enddef
+else
+  X := 10;
+  Y := 3;
+  Z := 0;
+  while X > 0 do
+    Z := Z + Y;
+    X := X - 1
+  endwhile
+endif
