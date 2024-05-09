@@ -12,38 +12,7 @@ import Text.ParserCombinators.Parsec
 import Control.Monad.Except
 import qualified Data.ByteString.Char8 as BS
 import Data.Hashable
-
--- We represent variables as strings.
-type Variable = String
-
---We also represent error messages as strings.
-type ErrorMsg = String
-
-
-data Expression =
-    Var Variable                            -- x
-  | Val Value                               -- v
-  | Lst Expression
-  | Assign Variable Expression              -- x := e
-  | Sequence Expression Expression          -- e1; e2
-  | Op Binop Expression Expression
-  | If Expression Expression Expression     -- if e1 then e2 else e3 endif
-  | While Expression Expression             -- while e1 do e2 endwhile
-  | FunctionDecl Variable Expression Expression -- def fun(arg1,arg2=3) <body>
-  -- | FunctionCall Variable Expression
-  deriving (Show)
-type List = [Int]
-
-data Binop =
-    Plus     -- +  :: Int  -> Int  -> Int
-  | Minus    -- -  :: Int  -> Int  -> Int
-  | Times    -- *  :: Int  -> Int  -> Int
-  | Divide   -- /  :: Int  -> Int  -> Int
-  | Gt       -- >  :: Int -> Int -> Bool
-  | Ge       -- >= :: Int -> Int -> Bool
-  | Lt       -- <  :: Int -> Int -> Bool
-  | Le       -- <= :: Int -> Int -> Bool
-  deriving (Show)
+import DataTypes
 
 op_hashes x = 
     case x of
@@ -55,16 +24,10 @@ op_hashes x =
         "<" -> 13
         ">=" -> 14
         "<=" -> 15
-        ":=" -> 16
-data Value =
-    IntVal Int
-  | BoolVal Bool
-  deriving (Show)
+        "=" -> 16
 
-hashes = []
-
-hashVal :: Int -> Int
-hashVal x = hash $show x
+hashVal :: Show a => a -> Int
+hashVal x = hash $ show x
 
 fileP :: GenParser Char st (Expression, List)
 fileP = do
@@ -91,7 +54,7 @@ exprP' = do
   spaces
   return (case rest of
     Nothing   -> (t, hash_t)
-    Just (":=", hash_assign, t', hash_t') -> (case t of
+    Just ("=", hash_assign, t', hash_t') -> (case t of
       Var varName -> (Assign varName t', hash_t++[hash_assign]++hash_t'++[(hash_assign::Int)+ last hash_t + last hash_t'])
       _           -> error "Expected var")
     Just ("-", hash_op, t', hash_t') -> (Op (transOp "-") t t', [hash_op]++hash_t++hash_t' ++ [(hash_op::Int) + last hash_t + 2 * last hash_t'])
@@ -127,32 +90,40 @@ restP = do
     <|> string "<"
     <|> try (string ">=")
     <|> string ">"
-    <|> string ":=" -- not really a binary operator, but it fits in nicely here.
+    <|> string "=" 
     <?> "binary operator"
   (e, hash_e) <- exprP'
   return (ch, op_hashes ch, e, hash_e)
 
 -- All terms can be distinguished by looking at the first character
-termP = valP
+termP = funP
+    <|> classDefinition
+    <|> valP
     <|> listP
-    <|> funP
     <|> ifP
     <|> whileP
     <|> parenP
+    <|> returnStatement
     <|> varP
-    <?> "value, variable, 'def', 'if', 'while', or '('"
+    <?> "value, variable, 'def', 'class', 'if', 'while', or '('"
 
 
 valP = do
   (v, hash_child) <- boolP <|> numberP
   return $ (Val v, hash_child)
 
+returnStatement = do
+  string "return"
+  spaces
+  (retExp, retExpHash) <- valP <|> varP
+  return $ (Return retExp, retExpHash ++ [last retExpHash + hash "return_statment"])
+
 boolP = do
   bStr <- string "true" <|> string "false" <|> string "skip"
   return $ case bStr of
-    "true" -> (BoolVal True, [hashVal (1::Int)])
-    "false" -> (BoolVal False, [hashVal (1::Int)])
-    "skip" -> (BoolVal False, [hashVal (1::Int)])
+    "true" -> (BoolVal True, [hashVal "boolean_true"])
+    "false" -> (BoolVal False, [hashVal "boolean_false"])
+    "skip" -> (BoolVal False, [hashVal "boolean_skip"])
 
 numberP = do
   n <- many1 digit
@@ -183,7 +154,16 @@ rest_elems = do
 varP = do
   firstChar <- letter
   restChars <- many (alphaNum <|> char '_')
-  return $ (Var (firstChar : restChars), [hashVal (3::Int)])
+  functionCall <- optionMaybe functionArgs
+  return ( case functionCall of
+    Nothing -> (Var (firstChar : restChars), [hashVal "variable_declaration"])
+    Just (params, hash_params) -> (FunctionSignature (firstChar : restChars) params, [hashVal "function_call"] ++ hash_params ++ [hashVal "function_call" + sum hash_params]))
+
+functionArgs = do
+  char '('
+  (params, hash_params) <- f_args
+  char ')'
+  return $ (FunctionArgs params, hash_params)
 
 ifP = do
   spaces
@@ -194,23 +174,31 @@ ifP = do
   string "else"
   (e3, hash_e3) <- exprP 
   string "endif"
-  return $ (If e1 e2 e3,  hash_e1 ++ hash_e2 ++ [hashVal (4::Int)] ++ hash_e3 ++ [hashVal (4::Int)+ last hash_e1+ last hash_e2+ last hash_e3])
+  return $ (If e1 e2 e3,  hash_e1 ++ hash_e2 ++ [hashVal "if_expression"] ++ hash_e3 ++ [hashVal "if_expression"+ last hash_e1+ last hash_e2+ last hash_e3])
+
 
 funP = do
   spaces
   string "def"
   spaces
   (fname, hash_fname) <- varP
-  string "("
-  (args, hash_args) <- f_args
-  string ")"
-  string ":"
+  char ':'
   (body, hash_body) <- exprP
   string "enddef"
   return( case fname of
-    Var varName -> (FunctionDecl varName args body, hash_fname ++ hash_args ++ hash_body ++ [hashVal (0::Int)] ++ [hashVal (0::Int) + last hash_fname + last hash_args + last hash_body])
+    FunctionSignature name params -> (FunctionDecl name params body, hash_fname ++ hash_body ++ [hashVal "function_definition"] ++ [hashVal "function_definition" + last hash_fname + last hash_body])
     _ -> error "expected variable")
-
+ 
+classDefinition = do
+  string "class"
+  spaces
+  (fname, hash_fname) <- varP
+  char ':'
+  (body, hash_body) <- exprP
+  string "endclass"
+  return( case fname of
+    Var name -> (ClassDecl name body, hash_fname ++ hash_body ++ [hashVal "class_definition"] ++ [hashVal "class_definition" + last hash_fname + last hash_body])
+    _ -> error "expected variable")
 
 
 f_args = do
@@ -221,11 +209,11 @@ f_args = do
     Just (e', hash_e') -> (Sequence args e', hash_args++hash_e'))
 
 f_arg = do
-  (arg, hash_arg) <- varP
+  (arg, hash_arg) <- varP <|> valP
   default_assgn <- optionMaybe restP
   return $ case default_assgn of
     Nothing -> (arg, hash_arg)
-    Just (":=", hash_assign, t', hash_t') -> case arg of
+    Just ("=", hash_assign, t', hash_t') -> case arg of
       Var argument ->    (Assign argument t', hash_arg++[hash_assign]++hash_t'++[(hash_assign::Int)+ last hash_arg + last hash_t'])
       _ -> error "error"
     _           -> error "Expected assignment"
@@ -243,7 +231,7 @@ whileP = do
   string "do"
   (e2, hash_e2) <- exprP
   string "endwhile"
-  return $ (While e1 e2, hash_e1 ++ [hashVal (5::Int)] ++  hash_e2 ++ [hashVal (5::Int) + last hash_e1 + last hash_e2])
+  return $ (While e1 e2, hash_e1 ++ [hashVal "while_expression"] ++  hash_e2 ++ [hashVal "while_expression" + last hash_e1 + last hash_e2])
 
 -- An expression in parens, e.g. (9-5)*2
 parenP = do
@@ -255,7 +243,7 @@ parenP = do
   rest <- optionMaybe restP
   spaces
   return $ case rest of
-    Nothing -> (e1, hash_e1 ++ [hashVal 6] ++ [hashVal 7] ++ [last hash_e1+ hashVal 6 + hashVal 7])
+    Nothing -> (e1, [hashVal "("] ++ hash_e1 ++ [hashVal ")"] ++ [last hash_e1+ hashVal 6 + hashVal 7])
     Just ("-", hash_op, e', hash_e') ->  (Op (transOp "-") e1 e', hash_e1 ++ [hashVal 6] ++ [hashVal 7] ++ [hash_op] ++ hash_e' ++ [hash_op + 2 * last hash_e1 + last hash_e' + hashVal 6 + hashVal 7])
     Just ("/", hash_op, e', hash_e') ->  (Op (transOp "/") e1 e', hash_e1 ++ [hashVal 6] ++ [hashVal 7] ++ [hash_op] ++ hash_e' ++ [hash_op + 2 * last hash_e1 + last hash_e' + hashVal 6 + hashVal 7])
     Just (">=", hash_op, e', hash_e') ->  (Op (transOp ">=") e1 e', hash_e1 ++ [hashVal 6] ++ [hashVal 7] ++ [hash_op] ++ hash_e' ++ [hash_op + 2 * last hash_e1 + last hash_e' + hashVal 6 + hashVal 7])
@@ -264,7 +252,11 @@ parenP = do
     Just ("<=", hash_op, e', hash_e') ->  (Op (transOp "<=") e1 e', hash_e1 ++ [hashVal 6] ++ [hashVal 7] ++ [hash_op] ++ hash_e' ++ [hash_op + 2 * last hash_e1 + last hash_e' + hashVal 6 + hashVal 7])
     Just (op, hash_op, e', hash_e') -> (Op (transOp op) e1 e', hash_e1 ++ [hashVal 6] ++ [hashVal 7] ++ [hash_op] ++ hash_e' ++ [hash_op + last hash_e1 + last hash_e' + hashVal 6 + hashVal 7]) -- assuming - and / are symmetrical. need to change
 
-
+-- showAst fileName = do
+--   p <- parseFromFile fileP fileName
+--   case p of
+--         Left err -> print err
+--         Right (expr, list) -> print expr
 
 showAst fileName = do
   p <- parseFromFile fileP fileName
