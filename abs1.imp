@@ -1,2 +1,15 @@
-X = 3;
-Y = 4
+import asdf;
+from sdfhg import qwer as ipi;
+x = 4;
+y = 4;
+def asfd(arg1=2,arg2=3,arg3=4):
+    Y = 4;
+    X = 3;
+    x = 7 + 3;
+    if x then
+        true
+    else
+        false
+    endif;
+    return X
+enddef

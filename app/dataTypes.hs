@@ -24,6 +24,8 @@ data Expression =
   | FunctionArgs Expression                 -- (arg1, ar2=4)
   | ClassDecl Variable Expression           -- class ClassName body endclass
   | Return Expression                       -- return var|val|list
+  | Import Expression                       -- import pkg (as pkg1)
+  | ImportFromParent Expression Expression  -- from parent import child (as pkg1)
   deriving (Show)
 
 

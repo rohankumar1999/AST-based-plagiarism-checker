@@ -16,15 +16,15 @@ import DataTypes
 
 op_hashes x = 
     case x of
-        "+" -> 8
-        "-" -> 9
-        "*" -> 10
-        "/" -> 11
-        ">" -> 12
-        "<" -> 13
-        ">=" -> 14
-        "<=" -> 15
-        "=" -> 16
+        "+" -> hashVal "+"
+        "-" -> hashVal "-"
+        "*" -> hashVal "*"
+        "/" -> hashVal "/"
+        ">" -> hashVal ">"
+        "<" -> hashVal "<"
+        ">=" -> hashVal ">="
+        "<=" -> hashVal "<="
+        "=" -> hashVal "="
 
 hashVal :: Show a => a -> Int
 hashVal x = hash $ show x
@@ -96,21 +96,44 @@ restP = do
   return (ch, op_hashes ch, e, hash_e)
 
 -- All terms can be distinguished by looking at the first character
-termP = funP
-    <|> classDefinition
-    <|> valP
-    <|> listP
-    <|> ifP
-    <|> whileP
-    <|> parenP
-    <|> returnStatement
-    <|> varP
+termP = try funP
+    <|> try classDefinition
+    <|> try import2
+    <|> try valP
+    <|> try listP
+    <|> try import1 
+    <|> try ifP
+    <|> try whileP
+    <|> try parenP
+    <|> try returnStatement
+    <|> try varP
     <?> "value, variable, 'def', 'class', 'if', 'while', or '('"
 
 
 valP = do
   (v, hash_child) <- boolP <|> numberP
   return $ (Val v, hash_child)
+
+import1 = do
+  string "import"
+  spaces
+  (pkg, hash_pkg) <- varP
+  spaces
+  asImport <- optionMaybe (string "as")
+  case asImport of
+    Nothing -> return $ (Import pkg, [hashVal "import1_statement"] ++ hash_pkg ++ [hashVal "import1_statement" + last hash_pkg])
+    Just _ -> do
+      spaces
+      (asPkg, hash_asPkg) <- varP
+      return $ (Import asPkg,[hashVal "import1_statement"] ++ hash_asPkg ++ [hashVal "import1_statement" + last hash_asPkg])
+
+import2 = do
+  string "from"
+  spaces
+  (parentPkg, hash_ParentPkg) <- varP
+  spaces
+  (pkg, hash_pkg) <- import1
+  return $(ImportFromParent pkg parentPkg, hash_ParentPkg ++ hash_pkg ++ [last hash_ParentPkg + last hash_pkg])
 
 returnStatement = do
   string "return"
